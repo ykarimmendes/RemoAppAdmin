@@ -1,12 +1,16 @@
 import 'dart:html';
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:extended_masked_text/extended_masked_text.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app_admin/noticia.dart';
 import 'package:image_picker/image_picker.dart';
+
+import 'foto.dart';
 
 class AppColor {
   static Color corPadrao = Color(0xff060D1D);
@@ -38,9 +42,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  Noticia noticia = new Noticia();
   List<Image> imagens = new List<Image>();
   Image _imagemPricipal;
-  Uint8List _arquivoPrincipal;
+  Uint8List _galeria;
+  List<Uint8List> _galerias = new List<Uint8List>();
   final picker = ImagePicker();
   var tituloController = new TextEditingController();
 
@@ -96,8 +102,15 @@ class _MyHomePageState extends State<MyHomePage> {
                         children: [
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(primary: AppColor.corAmarelo),
-                            onPressed: () {
-                              uploadPic(_arquivoPrincipal);
+                            onPressed: () async {
+                              noticia.fotoPrincipal.link = await uploadPic(_galeria);
+                              _galerias.forEach((element) async {
+                                Foto foto = new Foto();
+                                foto.link = await uploadPic(element);
+                                noticia.fotos.add(foto);
+                              });
+                              noticia.titulo = tituloController.text;
+                              addUser(noticia);
                             },
                             label: Text('Salvar'),
                             icon: Icon(Icons.save),
@@ -138,11 +151,11 @@ class _MyHomePageState extends State<MyHomePage> {
                     elevation: 5,
                     child: _imagemPricipal == null
                         ? Center(
-                            child: Text(
-                              "Selecione a imagem principal",
-                              style: TextStyle(fontWeight: FontWeight.bold, color: AppColor.corAmarelo),
-                            ),
-                          )
+                      child: Text(
+                        "Selecione a imagem principal",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: AppColor.corAmarelo),
+                      ),
+                    )
                         : _imagemPricipal),
               ),
             ),
@@ -190,39 +203,39 @@ class _MyHomePageState extends State<MyHomePage> {
 
   getImage() async {
     final image = await picker.getImage(source: ImageSource.camera);
-    //_arquivoPrincipal =new Blob(await image.readAsBytes());
-    image.readAsBytes().then((value) => _arquivoPrincipal = value);
-
+    image.readAsBytes().then((value) => _galeria = value);
     setState(() {
       if (image != null) {
         if (true) {
           _imagemPricipal = Image.network(image.path);
-
-      }
-        } else {
-          //_imagemPricipal = Image.file(File(pickedFile.path));
         }
+      } else {
+        //_imagemPricipal = Image.file(File(pickedFile.path));
       }
+    }
     );
   }
 
-  Future getImages() async {
-    final pickedFile = await picker.getImage(source: ImageSource.camera);
-
+  getImages() async {
+    final image = await picker.getImage(source: ImageSource.camera);
+    image.readAsBytes().then((value) => _galerias.add(value));
     setState(() {
+      if (image != null) {
         if (true) {
-          imagens.add(Image.network(pickedFile.path));
-        } else {
-          //imagens.add(Image.file(File(pickedFile.path)));
+          imagens.add(Image.network(image.path));
         }
-    });
+      } else {
+        //_imagemPricipal = Image.file(File(pickedFile.path));
+      }
+    }
+    );
   }
 
   Container buildTextField(String tituloCampo, double tamanhoTextField,
       int TamanhoMaximoText, IconData icon,
       {String mask = null,
-      int maximoLinhas = 1,
-      TextEditingController controller}) {
+        int maximoLinhas = 1,
+        TextEditingController controller}) {
     return Container(
       padding: const EdgeInsets.all(8),
       width: tamanhoTextField,
@@ -249,9 +262,22 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future uploadPic(Uint8List _image) async {
-    final Reference storageReference = FirebaseStorage.instance.ref().child('Uploads/teste3.jpeg');
+  Future<String> uploadPic(Uint8List _image) async {
+    String nomeArquivo = tituloController.text.toLowerCase().substring(0,5)+DateTime.now().toString().replaceAll(" ", "");
+    final Reference storageReference = FirebaseStorage.instance.ref().child('Uploads/$nomeArquivo');
     TaskSnapshot uploadTask  = await storageReference.putData(_image, SettableMetadata(contentType: 'image/jpeg'));
-    String docUrl = await uploadTask.ref.getDownloadURL();
+    return await uploadTask.ref.getDownloadURL();
   }
+
+  Future<void> addUser(Noticia noticia) {
+    CollectionReference users = FirebaseFirestore.instance.collection('noticias');
+    // Call the user's CollectionReference to add a new user
+    return users
+        .add({
+      'titulo': noticia.titulo
+    })
+        .then((value) => print("User Added"))
+        .catchError((error) => print("Failed to add user: $error"));
+  }
+
 }
